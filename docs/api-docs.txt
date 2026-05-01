@@ -1,0 +1,1020 @@
+수강신청 기반 취약점 학습 서비스 - 1차 MVP API 상세 문서
+=========================================================
+
+목적
+----
+이 문서는 1차 MVP에서 웹이 자연스럽게 노출할 API와 취약점 표면을 정리한다.
+웹은 일부러 만든 실습용 API보다 실제 수강신청/관리자 기능처럼 보이는 허술한 구현을 우선한다.
+MCP는 이 허술한 기능 표면을 분석하여 OWASP Top 10:2025 취약점을 발견하는 흐름으로 맞춘다.
+
+수정·설정 변경과 삭제 요청은 DELETE/PATCH 대신 POST로 통일한다.
+
+DB 스키마 기준
+--------------
+요청/응답 데이터는 현재 엔티티에 존재하는 필드를 기준으로 작성한다.
+
+- `users`: `id`, `username`, `passwordHash`, `role`, `createdAt`
+- `professors`: `id`, `userId`, `displayName`, `departmentName`
+- `courses`: `id`, `code`, `name`, `description`, `professorId`, `category`, `maxCapacity`, `currentCount`, `isVisible`, `createdAt`
+- `enrollments`: `id`, `userId`, `courseId`, `status`, `enrolledAt`, `droppedAt`
+- `files`: `id`, `courseId`, `uploaderId`, `originalName`, `storedPath`, `mimeType`, `fileSize`, `isPublic`, `uploadedAt`
+- `refresh_tokens`: `id`, `userId`, `tokenHash`, `issuedAt`, `expiresAt`, `revokedAt`, `deviceInfo`
+- `audit_logs`: `id`, `userId`, `action`, `resourceType`, `resourceId`, `ipAddress`, `requestMethod`, `requestPath`, `responseStatus`, `createdAt`
+- `error_logs`: `id`, `errorType`, `message`, `stackTrace`, `requestPath`, `requestMethod`, `requestBody`, `userId`, `createdAt`
+- `debug_configs`: `id`, `configKey`, `configValue`, `isSensitive`, `description`, `updatedAt`, `updatedBy`
+- `cors_policies`(선택/향후): 1차 MVP에서는 관리 API를 두지 않는다. DB에는 행을 둘 수 있지만 노출 표면은 다른 misconfiguration 경로로 다룬다.
+
+비영속 응답 예외
+----------------
+`accessToken`, `refreshToken`, `dependencies`, `buildInfo`처럼 DB 테이블에 저장되지 않는 값은 API 동작상 필요한 경우에만 "비영속 응답"으로 표시한다.
+
+OWASP Top 10:2025 최종 점검
+---------------------------
+- A01 Broken Access Control: 사용자/수강신청/파일/admin API의 IDOR와 권한 우회로 충족한다.
+- A02 Security Misconfiguration: debug config, error log, 운영 설정 노출, 내부 경로 노출로 충족한다.
+- A03 Software Supply Chain Failures: dependency/build 정보 노출로 충족한다.
+- A04 Cryptographic Failures: JWT/refresh token 구성, secret 노출, 만료되지 않는 파일 링크로 충족한다.
+- A05 Injection: 로그인/회원가입의 계정 조회, 강의 검색/필터, audit log 검색, raw query 테스트로 충족한다.
+- A06 Insecure Design: 정원 초과, 중복 신청, 신청 기간 미검증 등 서버 검증 부재, 숨김 강의 공개 조작으로 충족한다.
+- A07 Authentication Failures: 비밀번호 복잡도/길이 정책 없음, 로그인 제한 없음, token 폐기 실패로 충족한다.
+- A08 Software or Data Integrity Failures: 목데이터 파일 삭제 후 복구성 확인, debug config 변조로 충족한다.
+- A09 Security Logging and Alerting Failures: 로그 조회/삭제, 보안 이벤트 누락으로 충족한다.
+- A10 Mishandling of Exceptional Conditions: 별도 crash API 없이 기존 기능 API의 5xx, stack trace, 내부 경로, parser error 노출로 충족한다.
+
+
+---------------
+[API]
+POST /api/auth/register
+
+[기능]
+- 회원가입
+- 기본 role은 `student`로 생성한다.
+
+[요청데이터]
+- 헤더
+  - `Content-Type: application/json`
+- 바디
+  - `id`: `users.id`, 정상 구현에서는 클라이언트 입력을 무시해야 하지만 취약 구성에서는 중복 확인 raw query에 섞일 수 있음
+  - `username`: `users.username`
+  - `passwordHash`: `users.passwordHash` 생성에 사용되는 원문 비밀번호 입력값
+  - `role`: `users.role`, 취약 구성에서는 사용자가 `admin` 또는 `professor`를 직접 전달할 수 있음
+- 공격이 들어오는 방법
+  - `role=admin` 전달로 권한 상승 시도
+  - `username=admin' OR '1'='1' --` 형태로 중복 확인 SQL 조작
+  - `id=1 AND LEFT(password_hash,1)='a'` 형태의 조건을 넣어 에러/응답 차이 기반 blind SQL Injection 유도
+  - `username` 50자 초과 입력 시, 서버가 사전 검증 없이 DB까지 전달하여 컬럼 길이 에러/stack trace를 노출하는지 확인
+  - 비밀번호 입력값 또는 취약하게 생성된 `passwordHash`가 255자를 넘도록 하여 `users.passwordHash` 길이 제한 에러 유도
+  - `id`에 bigint 범위를 초과하는 매우 큰 숫자 또는 문자열을 넣어 casting/DB 에러 유도
+  - 비정상 JSON으로 예외 유도
+
+[응답데이터]
+- 정상 응답
+  - `id`, `username`, `role`, `createdAt`
+- 취약점 노출 응답
+  - 비밀번호 복잡도/길이와 무관하게 계정 생성 성공
+  - 사용자가 전달한 `role=admin`이 그대로 반영된 응답
+  - SQLi payload에 따라 중복 계정 여부, DB 에러, `LEFT` 함수 결과 차이가 응답으로 드러남
+  - 길이 초과 입력 시 컬럼명, 제한 길이, DB 에러 메시지, `stackTrace` 노출
+  - 중복 가입/비정상 입력 시 `message`, `stackTrace`, `requestBody`가 포함된 에러 응답
+
+  
+---------------
+[API]
+POST /api/auth/login
+
+[기능]
+- 로그인
+- JWT access token 발급
+- refresh token 발급 및 `refresh_tokens` 저장
+
+[요청데이터]
+- 헤더
+  - `Content-Type: application/json`
+- 바디
+  - `username`: `users.username`
+  - `passwordHash`: `users.passwordHash` 비교에 사용되는 원문 비밀번호 입력값
+- 공격이 들어오는 방법
+  - 동일 계정에 대한 반복 로그인 시도
+  - `username=admin' --` 형태로 비밀번호 조건 우회
+  - `username=admin' OR '1'='1' --` 형태로 첫 번째 사용자 인증 유도
+  - `username=admin' AND LEFT(password_hash,1)='a' --` 형태의 blind SQL Injection으로 `passwordHash` 일부 추론
+  - `username` 50자 초과 또는 비밀번호 255자 초과 수준의 긴 문자열로 DB/비교 로직 에러 유도
+  - malformed JSON body 전송
+  - `X-Test-Delay: true` 헤더로 timeout 처리 확인
+
+[응답데이터]
+- 정상 응답
+  - 사용자: `id`, `username`, `role`, `createdAt`
+  - 비영속 응답: `accessToken`, `refreshToken`
+- 취약점 노출 응답
+  - 반복 로그인에도 차단/지연/429 응답이 동작하지 않음
+  - SQLi payload로 비밀번호 비교를 우회해 로그인 성공
+  - `LEFT(password_hash,1)` 조건 결과에 따라 401/500/응답 시간 차이가 발생
+  - 길이 초과 입력 시 컬럼명, 제한 길이, DB 에러 메시지, `stackTrace` 노출
+  - refresh token이 장기간 유효하거나 재사용 가능
+  - 에러 응답에 `passwordHash` 비교 실패 사유, `stackTrace`, `requestBody` 노출
+
+[연결 UI]
+- 로그인 / 회원가입 페이지
+
+[노출 취약점]
+- A07: 로그인 시도 제한 없음
+- A04: JWT/refresh token 취약 구성
+- A05: 로그인 SQL Injection
+- A10: malformed input 또는 timeout 처리 실패
+
+
+---------------
+[API]
+POST /api/auth/refresh
+
+[기능]
+- refresh token으로 access token 재발급
+
+[요청데이터]
+- 헤더
+  - `Content-Type: application/json`
+  - `Cookie: refreshToken=...`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 만료된 refresh token 재사용
+  - 로그아웃 후 폐기된 refresh token 재사용
+
+[응답데이터]
+- 정상 응답
+  - 비영속 응답: `accessToken`
+- 취약점 노출 응답
+  - 폐기된 refresh token으로도 재발급 성공
+  - 만료된 refresh token으로도 재발급 성공
+  - 에러 응답에 token 검증 로직 또는 `stackTrace` 노출
+
+[연결 UI]
+- 로그인 / 회원가입 페이지
+
+[노출 취약점]
+- A04: refresh token 재사용/회전 실패
+- A07: 폐기/만료 token 허용
+
+
+---------------
+[API]
+POST /api/auth/logout
+
+[기능]
+- refresh token 폐기
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+  - `Cookie: refreshToken=...`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 로그아웃 후 기존 refresh token 재사용
+  - 다른 사용자의 token 폐기 시도
+
+[응답데이터]
+- 정상 응답
+  - 비영속 응답: 로그아웃 성공 여부
+- 취약점 노출 응답
+  - 서버 내부 refresh token 폐기 상태가 갱신되지 않음
+  - 로그아웃 성공 후에도 같은 token으로 `/api/auth/refresh` 성공
+
+[연결 UI]
+- 로그인 / 회원가입 페이지
+
+[노출 취약점]
+- A07: logout token 폐기 실패
+- A04: refresh token 재사용
+
+
+---------------
+[API]
+GET /api/auth/me
+
+[기능]
+- 현재 로그인 사용자 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 만료된 access token 사용
+  - 변조된 JWT 사용
+  - 다른 role로 조작한 JWT 사용
+
+[응답데이터]
+- 정상 응답
+  - `id`, `username`, `role`, `createdAt`
+- 취약점 노출 응답
+  - 만료/변조 token에도 사용자 정보 반환
+  - `passwordHash` 같은 민감/내부 필드가 함께 반환
+
+[연결 UI]
+- 로그인 / 회원가입 페이지
+- 대시보드
+
+[노출 취약점]
+- A07: 만료/변조 token 허용
+- A04: JWT 검증 취약
+
+
+---------------
+[API]
+GET /api/users/:userId
+
+[기능]
+- 사용자 상세 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - URL path의 `userId`를 다른 사용자 `users.id`로 변경
+  - `userId`에 문자열, SQL 조각, 매우 큰 숫자 입력
+
+[응답데이터]
+- 정상 응답
+  - `id`, `username`, `role`, `createdAt`
+- 취약점 노출 응답
+  - 다른 사용자의 `id`, `username`, `role`, `createdAt` 반환
+  - `passwordHash` 노출
+  - 잘못된 `userId`에서 `stackTrace` 또는 DB 에러 노출
+
+[연결 UI]
+- 대시보드
+
+[노출 취약점]
+- A01: IDOR
+- A10: 잘못된 path parameter 처리 실패
+
+
+---------------
+[API]
+GET /api/courses
+
+[기능]
+- 강의 목록 조회
+- 검색 및 카테고리 필터링
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- Query
+  - `keyword`: `courses.name`, `courses.code`, `courses.description` 검색에 사용
+  - `category`: `courses.category`
+  - `isVisible`: `courses.isVisible`
+- 공격이 들어오는 방법
+  - `keyword=' OR '1'='1`
+  - `category=' OR is_visible=false --`
+  - `isVisible=false` 직접 전달로 숨김 강의 조회
+  - `q`, `keyword`에 `@@`, `1/0`, `<script>` 입력으로 예외 유도
+
+[응답데이터]
+- 정상 응답
+  - 목록 항목: `id`, `code`, `name`, `description`, `professorId`, `category`, `maxCapacity`, `currentCount`, `isVisible`, `createdAt`
+- 취약점 노출 응답
+  - `isVisible=false` 강의까지 반환
+  - Injection payload로 전체 강의 반환
+  - 에러 응답에 raw SQL, `Error:`, `stackTrace` 노출
+
+[연결 UI]
+- 강의 목록 페이지
+
+[노출 취약점]
+- A05: SQL Injection
+- A01: 숨김 강의 접근 제어 실패
+- A10: 검색 조건 예외 처리 실패
+
+
+---------------
+[API]
+GET /api/courses/:courseId
+
+[기능]
+- 강의 상세 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 숨김 강의의 `courses.id` 직접 접근
+  - 존재하지 않는 `courseId` 접근
+  - `courseId=abc`, `courseId=1/0`, 매우 큰 숫자 입력
+
+[응답데이터]
+- 정상 응답
+  - `id`, `code`, `name`, `description`, `professorId`, `category`, `maxCapacity`, `currentCount`, `isVisible`, `createdAt`
+- 취약점 노출 응답
+  - `isVisible=false` 강의 상세 반환
+  - 존재하지 않는 강의 요청 시 `Error:`, `stackTrace`, DB 에러 노출
+
+[연결 UI]
+- 강의 목록 페이지
+- 강의 상세 페이지
+
+[노출 취약점]
+- A01: 숨김 강의 직접 접근
+- A10: 잘못된 path parameter 처리 실패
+
+
+---------------
+[API]
+POST /api/courses/:courseId/visibility
+
+[기능]
+- 강의 공개/숨김 상태 변경
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: application/json`
+- 바디
+  - `isVisible`: `courses.isVisible`
+- 공격이 들어오는 방법
+  - student role로 숨김 강의 공개
+  - 다른 교수의 강의 공개 상태 변경
+  - 존재하지 않는 `courseId` 입력
+
+[응답데이터]
+- 정상 응답
+  - `id`, `isVisible`
+- 취약점 노출 응답
+  - 권한 없는 사용자의 `isVisible` 변경 성공
+  - 잘못된 `courseId`에서 `stackTrace` 노출
+
+[연결 UI]
+- 관리자 - 강의 관리 상세
+
+[노출 취약점]
+- A01: 권한 우회
+- A06: 숨김 강의 공개 상태 조작
+- A10: 예외 처리 실패
+
+
+---------------
+[API]
+POST /api/enrollments
+
+[기능]
+- 수강 신청
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: application/json`
+- 바디
+  - `userId`: `enrollments.userId`
+  - `courseId`: `enrollments.courseId`
+  - `status`: `enrollments.status`, 기본값 `enrolled`
+- 공격이 들어오는 방법
+  - `userId`를 다른 사용자의 `users.id`로 변경
+  - 프론트에서 신청 버튼이 비활성화된 정원 마감 강의의 `courseId`를 직접 요청하여 서버 측 정원 검증 우회
+  - 정원 마감 강의에 동시 요청 전송
+  - 같은 `courseId`를 반복 전송
+  - `status=dropped` 또는 잘못된 enum 값 전송
+  - `X-Test-Delay: true` 헤더로 timeout 처리 확인
+
+[응답데이터]
+- 정상 응답
+  - `id`, `userId`, `courseId`, `status`, `enrolledAt`, `droppedAt`
+  - 관련 강의 상태: `id`, `maxCapacity`, `currentCount`
+- 취약점 노출 응답
+  - 다른 `userId`로 수강신청 성공
+  - `currentCount >= maxCapacity`인 강의에도 수강신청 성공
+  - `currentCount > maxCapacity` 상태의 강의 반환
+  - 중복 신청 DB constraint 에러, raw error, `stackTrace` 노출
+  - timeout 상황에서 500 또는 응답 지연
+
+[연결 UI]
+- 강의 상세 페이지
+- A10 예외 처리 취약점 탐지 흐름
+
+[노출 취약점]
+- A06: 프론트 상태에만 의존한 서버 측 정원 검증 부재
+- A06: race condition으로 정원 초과
+- A06: 중복 신청/신청 정책 우회
+- A01: 다른 user 요청 가능
+- A10: 동시성/DB 예외 처리 실패
+
+
+---------------
+[API]
+GET /api/enrollments/me
+
+[기능]
+- 내 수강신청 목록 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - query로 `userId`를 추가하여 다른 사용자 목록 요청
+  - 반복 요청으로 rate limit 확인
+
+[응답데이터]
+- 정상 응답
+  - 목록 항목: `id`, `userId`, `courseId`, `status`, `enrolledAt`, `droppedAt`
+- 취약점 노출 응답
+  - query의 `userId`가 적용되어 다른 사용자의 신청 목록 반환
+  - 반복 요청에도 429 없이 계속 성공
+
+[연결 UI]
+- 대시보드
+
+[노출 취약점]
+- A01: IDOR
+- A10: 반복 요청 제한/처리 미흡
+
+
+---------------
+[API]
+GET /api/enrollments/:enrollmentId
+
+[기능]
+- 수강신청 상세 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - path의 `enrollmentId`를 다른 사용자의 `enrollments.id`로 변경
+  - 잘못된 path parameter 입력
+
+[응답데이터]
+- 정상 응답
+  - `id`, `userId`, `courseId`, `status`, `enrolledAt`, `droppedAt`
+- 취약점 노출 응답
+  - 다른 사용자의 수강신청 상세 반환
+  - 잘못된 `enrollmentId`에서 `stackTrace` 노출
+
+[연결 UI]
+- 대시보드
+
+[노출 취약점]
+- A01: IDOR
+- A10: path parameter 예외 처리 실패
+
+
+---------------
+[API]
+POST /api/enrollments/:enrollmentId/cancel
+
+[기능]
+- 수강신청 취소
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - path의 `enrollmentId`를 다른 사용자의 `enrollments.id`로 변경하여 수강신청 취소
+
+[응답데이터]
+- 정상 응답
+  - `id`, `userId`, `courseId`, `status`, `enrolledAt`, `droppedAt`
+- 취약점 노출 응답
+  - 다른 사용자의 신청이 `status=dropped`로 변경
+
+[연결 UI]
+- 대시보드
+- 강의 상세 페이지
+
+[노출 취약점]
+- A01: 다른 사용자의 수강 취소
+
+
+---------------
+[API]
+GET /api/courses/:courseId/files
+
+[기능]
+- 강의 자료 목록 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 수강하지 않은 강의의 `courseId`로 파일 목록 조회
+  - 숨김 강의의 `courseId`로 파일 목록 조회
+
+[응답데이터]
+- 정상 응답
+  - 목록 항목: `id`, `courseId`, `uploaderId`, `originalName`, `mimeType`, `fileSize`, `isPublic`, `uploadedAt`
+- 취약점 노출 응답
+  - 수강하지 않은 강의의 파일 목록 반환
+  - `storedPath`가 함께 노출되어 `/var/www/uploads/secret.txt` 같은 내부 경로 확인 가능
+
+[연결 UI]
+- 강의 상세 페이지
+- 강의 자료 영역
+
+[노출 취약점]
+- A01: 파일 목록 IDOR
+- A02: 내부 경로 노출
+- A04: 민감 파일 위치 노출
+
+
+---------------
+[API]
+GET /api/files/:fileId/download
+
+[기능]
+- 강의 자료 다운로드
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - path의 `fileId`를 다른 강의의 `files.id`로 변경
+  - 수강하지 않은 강의의 파일 다운로드
+  - 존재하지 않는 `fileId` 입력
+  - 반복 요청 또는 `X-Test-Delay: true`로 timeout 확인
+
+[응답데이터]
+- 정상 응답
+  - `id`, `courseId`, `uploaderId`, `originalName`, `mimeType`, `fileSize`, `isPublic`, `uploadedAt`
+  - 실제 파일 스트림
+- 취약점 노출 응답
+  - 권한 없는 파일 다운로드 성공
+  - `storedPath`가 `/var/www/uploads/secret.txt`처럼 노출
+  - 존재하지 않는 파일 요청 시 내부 경로, `Error:`, `stackTrace` 노출
+
+[연결 UI]
+- 강의 자료 영역
+- A10 예외 처리 취약점 탐지 흐름
+
+[노출 취약점]
+- A01: 파일 다운로드 IDOR
+- A02: 내부 경로 노출
+- A04: 만료되지 않는 다운로드 링크/민감 파일 노출
+- A10: 파일 예외 처리 실패
+
+
+---------------
+[API]
+POST /api/files/:fileId/delete
+
+[기능]
+- 강의 자료 삭제
+- 삭제 요청은 목데이터 파일을 영구 삭제하지 않고, 일정 시간 뒤 원래 상태로 복구되는지 확인하는 시나리오로 둔다.
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 다른 강의의 `fileId` 삭제
+  - user가 회원가입/role 조작 취약점으로 `professor` 또는 `admin` 권한을 얻은 뒤 목데이터 강의 자료 삭제
+  - 존재하지 않는 `fileId` 반복 삭제
+  - 삭제 직후 파일 목록/다운로드 상태를 확인한 뒤, 일정 시간 후 같은 파일이 자동 복구되는지 재확인
+
+[응답데이터]
+- 정상 응답
+  - `id`, `courseId`, `uploaderId`, `originalName`
+- 취약점 노출 응답
+  - 권한 없는 삭제 성공
+  - 삭제 후 일정 시간이 지나도 목데이터 강의 자료가 복구되지 않음
+  - 삭제/복구 이벤트가 `audit_logs` 또는 `security/events`에 남지 않음
+  - 삭제 실패 시 내부 `storedPath`와 `stackTrace` 노출
+
+[연결 UI]
+- 강의 자료 영역
+
+[노출 취약점]
+- A01: 파일 삭제 권한 우회
+- A08: 목데이터 강의 자료 삭제 후 자동 복구/무결성 보장 실패
+- A10: 파일 삭제 예외 노출
+
+
+---------------
+[API]
+GET /api/admin/users
+
+[기능]
+- 관리자 사용자 목록 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - student/professor token으로 호출
+  - query로 `role` 필터 조작
+  - 반복 요청으로 rate limit 확인
+
+[응답데이터]
+- 정상 응답
+  - 목록 항목: `id`, `username`, `role`, `createdAt`
+- 취약점 노출 응답
+  - 일반 사용자가 전체 사용자 목록 조회
+  - `passwordHash` 노출
+
+[연결 UI]
+- 관리자 페이지
+
+[노출 취약점]
+- A01: 관리자 API 접근 우회
+- A02: 민감 정보 노출
+
+
+---------------
+[API]
+POST /api/admin/users/:userId/role
+
+[기능]
+- 사용자 role 변경
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: application/json`
+- 바디
+  - `role`: `users.role`
+- 공격이 들어오는 방법
+  - student token으로 자기 자신의 role을 `admin`으로 변경
+  - 다른 사용자의 role 변경
+  - 잘못된 enum 값 전송
+
+[응답데이터]
+- 정상 응답
+  - `id`, `username`, `role`, `createdAt`
+- 취약점 노출 응답
+  - 권한 없는 role 변경 성공
+  - enum validation 에러에 내부 구조 또는 `stackTrace` 노출
+
+[연결 UI]
+- 관리자 페이지
+
+[노출 취약점]
+- A01: 권한 상승
+- A10: enum validation 예외 노출
+
+
+---------------
+[API]
+GET /api/admin/audit-logs
+
+[기능]
+- 감사 로그 조회
+- `path` query로 요청 경로 필터링
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- Query
+  - `path`: `audit_logs.requestPath`
+  - `userId`: `audit_logs.userId`
+  - `resourceType`: `audit_logs.resourceType`
+- 공격이 들어오는 방법
+  - student/professor token으로 호출
+  - `path=' OR '1'='1` injection
+  - 공격 후 로그 조회로 흔적 확인
+
+[응답데이터]
+- 정상 응답
+  - 목록 항목: `id`, `userId`, `action`, `resourceType`, `resourceId`, `ipAddress`, `requestMethod`, `requestPath`, `responseStatus`, `createdAt`
+- 취약점 노출 응답
+  - 권한 없는 로그 조회
+  - Injection으로 전체 로그 반환
+  - 에러 응답에 raw SQL 또는 `stackTrace` 노출
+
+[연결 UI]
+- 관리자 - 로그 / 보안 이벤트 페이지
+
+[노출 취약점]
+- A01: 관리자 로그 접근 우회
+- A05: 로그 검색 injection
+- A09: 감사 로그 보호 미흡
+
+
+---------------
+[API]
+POST /api/admin/audit-logs/clear
+
+[기능]
+- 감사 로그 삭제
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: application/json`
+- 바디
+  - `userId`: `audit_logs.userId`
+  - `resourceType`: `audit_logs.resourceType`
+  - `requestPath`: `audit_logs.requestPath`
+- 공격이 들어오는 방법
+  - 일반 사용자 token으로 로그 삭제
+  - 특정 공격 경로만 삭제
+  - 전체 로그 삭제 후 보안 이벤트 누락 확인
+
+[응답데이터]
+- 정상 응답
+  - 삭제 대상 조건: `userId`, `resourceType`, `requestPath`
+- 취약점 노출 응답
+  - 일반 사용자의 로그 삭제 성공
+  - 삭제 자체가 `audit_logs` 또는 `security/events`에 남지 않음
+
+[연결 UI]
+- 관리자 - 로그 / 보안 이벤트 페이지
+
+[노출 취약점]
+- A09: 로그 삭제/감사 실패
+- A01: 관리자 권한 우회
+
+
+---------------
+[API]
+GET /api/admin/error-logs
+
+[기능]
+- 에러 로그 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- Query
+  - `requestPath`: `error_logs.requestPath`
+  - `errorType`: `error_logs.errorType`
+  - `userId`: `error_logs.userId`
+- 공격이 들어오는 방법
+  - 일반 사용자 token으로 호출
+  - 특정 path의 에러 로그 검색
+  - 에러를 유발한 뒤 stack trace 조회
+
+[응답데이터]
+- 정상 응답
+  - 목록 항목: `id`, `errorType`, `message`, `stackTrace`, `requestPath`, `requestMethod`, `requestBody`, `userId`, `createdAt`
+- 취약점 노출 응답
+  - 권한 없는 에러 로그 조회
+  - `stackTrace`, `requestBody`, 내부 경로, DB 에러 메시지 노출
+
+[연결 UI]
+- 관리자 페이지
+- 관리자 - 로그 / 보안 이벤트 페이지
+
+[노출 취약점]
+- A02: 상세 에러 로그 노출
+- A10: stack trace/내부 경로 노출
+- A09: 에러 로그 보호 미흡
+
+
+---------------
+[API]
+GET /api/security/events
+
+[기능]
+- 보안 이벤트 조회
+- 1차 DB에 별도 security event 테이블은 없으므로 `audit_logs`, `error_logs`를 기반으로 구성한다.
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- Query
+  - `userId`: `audit_logs.userId` 또는 `error_logs.userId`
+  - `requestPath`: `audit_logs.requestPath` 또는 `error_logs.requestPath`
+
+[응답데이터]
+- 정상 응답
+  - 감사 이벤트: `id`, `userId`, `action`, `resourceType`, `resourceId`, `requestMethod`, `requestPath`, `responseStatus`, `createdAt`
+  - 에러 이벤트: `id`, `errorType`, `message`, `requestPath`, `requestMethod`, `userId`, `createdAt`
+- 취약점 노출 응답
+  - 로그인 실패, 권한 우회, 로그 삭제 같은 이벤트가 누락
+  - 일반 사용자에게 보안 이벤트 노출
+
+[연결 UI]
+- 관리자 - 로그 / 보안 이벤트 페이지
+
+[노출 취약점]
+- A09: 보안 이벤트 누락
+- A01: 관리자 이벤트 접근 우회
+
+
+---------------
+[API]
+GET /api/system/dependencies
+
+[기능]
+- dependency 목록 조회
+- 관리자 시스템 정보 화면에서 운영 중 과도하게 노출된 정보로 취급한다.
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 일반 사용자 token으로 호출
+  - dependency 버전 정보를 기반으로 알려진 취약 패키지 식별
+
+[응답데이터]
+- 정상 응답
+  - 비영속 응답: 패키지명, 버전, 취약 여부
+- 취약점 노출 응답
+  - 일반 사용자에게 dependency 정보 노출
+  - 취약하거나 오래된 런타임/프레임워크/라이브러리 버전 노출
+
+[연결 UI]
+- 관리자 - 시스템 / 보안 설정 페이지
+
+[노출 취약점]
+- A03: Software Supply Chain Failures
+- A02: 시스템 정보 노출
+- A01: 관리자 정보 접근 우회
+
+
+---------------
+[API]
+GET /api/system/build-info
+
+[기능]
+- build 정보 조회
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 일반 사용자 token으로 호출
+  - build 정보로 프레임워크/배포 환경 추정
+
+[응답데이터]
+- 정상 응답
+  - 비영속 응답: 애플리케이션 버전, 빌드 시각, 런타임 버전
+- 취약점 노출 응답
+  - 배포 환경, 런타임 버전, 내부 경로 노출
+
+[연결 UI]
+- 관리자 - 시스템 / 보안 설정 페이지
+
+[노출 취약점]
+- A03: Software Supply Chain Failures
+- A02: 시스템 정보 노출
+
+
+---------------
+[API]
+GET /api/debug/configs
+
+[기능]
+- debug 설정 조회
+- 실제 서비스에서는 제거되어야 하지만, MVP에서는 운영 중 잘못 노출된 관리자 진단 기능으로 둔다.
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 일반 사용자 token으로 호출
+  - `isSensitive=true` 설정 조회
+
+[응답데이터]
+- 정상 응답
+  - 목록 항목: `id`, `configKey`, `configValue`, `isSensitive`, `description`, `updatedAt`, `updatedBy`
+- 취약점 노출 응답
+  - `isSensitive=true`인 `configValue`까지 노출
+  - 일반 사용자에게 운영 설정 반환
+
+[연결 UI]
+- 관리자 - 시스템 / 보안 설정 페이지
+
+[노출 취약점]
+- A02: 운영 설정 노출
+- A01: 관리자 진단 API 접근 우회
+
+
+---------------
+[API]
+POST /api/debug/configs/:key
+
+[기능]
+- debug 설정 변경
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: application/json`
+- 바디
+  - `configKey`: `debug_configs.configKey`
+  - `configValue`: `debug_configs.configValue`
+  - `isSensitive`: `debug_configs.isSensitive`
+  - `description`: `debug_configs.description`
+  - `updatedBy`: `debug_configs.updatedBy`
+- 공격이 들어오는 방법
+  - 일반 사용자 token으로 보안 설정 변경
+  - `configValue`로 debug 모드 또는 검증 로직 비활성화
+  - 잘못된 key로 예외 유도
+
+[응답데이터]
+- 정상 응답
+  - `id`, `configKey`, `configValue`, `isSensitive`, `description`, `updatedAt`, `updatedBy`
+- 취약점 노출 응답
+  - 권한 없는 설정 변경 성공
+  - 보안 옵션 비활성화
+  - 존재하지 않는 key에서 `stackTrace` 노출
+
+[연결 UI]
+- 관리자 - 시스템 / 보안 설정 페이지
+
+[노출 취약점]
+- A08: 런타임 설정 변조
+- A02: 보안 설정 오노출
+- A01: 관리자 설정 변경 우회
+- A10: 잘못된 key 예외 처리 실패
+
+
+---------------
+[API]
+GET /api/debug/secrets
+
+[기능]
+- secret 조회
+- 실제 서비스에는 없어야 하지만, 운영 중 잘못 노출된 관리자 진단 기능처럼 둔다.
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - 일반 사용자 token으로 호출
+  - `debug_configs.isSensitive=true` 값 조회
+
+[응답데이터]
+- 정상 응답
+  - `id`, `configKey`, `configValue`, `isSensitive`, `description`, `updatedAt`, `updatedBy`
+- 취약점 노출 응답
+  - JWT secret, DB password, API key에 해당하는 `configValue` 노출
+
+[연결 UI]
+- 관리자 - 시스템 / 보안 설정 페이지
+
+[노출 취약점]
+- A04: secret 노출
+- A02: debug endpoint 노출
+- A01: 관리자 진단 API 접근 우회
+
+
+---------------
+[API]
+POST /api/debug/query-test
+
+[기능]
+- raw query 테스트
+- 운영 중 잘못 남은 관리자 진단 API로 둔다.
+
+[요청데이터]
+- 헤더
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: application/json`
+- 바디
+  - `requestPath`: `audit_logs.requestPath` 또는 `error_logs.requestPath` 형태의 테스트 대상 경로
+  - `requestMethod`: `audit_logs.requestMethod` 또는 `error_logs.requestMethod`
+  - `requestBody`: `error_logs.requestBody`
+- 공격이 들어오는 방법
+  - raw SQL 조각 전달
+  - 일반 사용자 token으로 호출
+  - malformed JSON body 전송
+
+[응답데이터]
+- 정상 응답
+  - `requestPath`, `requestMethod`, `requestBody`
+- 취약점 노출 응답
+  - raw query 실행 결과 또는 DB 에러 반환
+  - `stackTrace`, SQL 문장, `requestBody` 노출
+
+[연결 UI]
+- 관리자 - 시스템 / 보안 설정 페이지
+
+[노출 취약점]
+- A05: Injection
+- A02: debug endpoint 노출
+- A10: raw query 예외 처리 실패
