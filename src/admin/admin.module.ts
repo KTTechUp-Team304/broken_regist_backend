@@ -1,10 +1,21 @@
 import { Module } from '@nestjs/common';
-import { AdminController } from './admin.controller';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditLog } from '../logs/entities/audit-log.entity';
+import { ErrorLog } from '../logs/entities/error-log.entity';
+import {
+  AdminAuditLogsController,
+  AdminErrorLogsController,
+} from './admin.controller';
 import { AdminService } from './admin.service';
 
 @Module({
-  controllers: [AdminController],
+  imports: [
+    TypeOrmModule.forFeature([AuditLog, ErrorLog]),
+  ],
+  controllers: [
+    AdminAuditLogsController,
+    AdminErrorLogsController,
+  ],
   providers: [AdminService],
-  exports: [AdminService],
 })
 export class AdminModule {}

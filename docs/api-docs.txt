@@ -1018,3 +1018,46 @@ POST /api/debug/query-test
 - A05: Injection
 - A02: debug endpoint 노출
 - A10: raw query 예외 처리 실패
+
+
+
+[수정사항]
+---------------
+[Logs]
+------
+LogsModule에서 제공되는 감사·에러 로그 및 보안 이벤트 관리 API
+
+[API]
+GET    /api/admin/audit-logs           role: admin
+[기능]
+- 감사 로그 조회
+[Query]
+- path          (audit_logs.requestPath)
+- userId        (audit_logs.userId)
+- resourceType  (audit_logs.resourceType)
+
+[API]
+POST   /api/admin/audit-logs/clear     role: admin
+[기능]
+- 감사 로그 삭제
+[요청데이터]
+- Body(JSON): userId?, resourceType?, requestPath?
+[응답코드]
+- 204 No Content
+
+[API]
+GET    /api/admin/error-logs           role: admin
+[기능]
+- 에러 로그 조회
+[Query]
+- requestPath   (error_logs.requestPath)
+- errorType     (error_logs.errorType)
+- userId        (error_logs.userId)
+
+[API]
+GET    /api/security/events            role: admin
+[기능]
+- 감사·에러 로그를 합쳐 “보안 이벤트” 형태로 조회
+[Query]
+- userId
+- requestPath
