@@ -11,11 +11,11 @@ export class CourseFilesController {
   constructor(private readonly svc: FilesService) {}
 
   @Get()
-  @ApiOperation({ summary: '강의 자료 목록 조회 (SQL Injection, 내부 경로 노출)' })
+  @ApiOperation({
+    summary: '강의 자료 목록 조회 (SQL Injection, 내부 경로 노출)',
+  })
   @ApiResponse({ status: 200, type: [FileResponseDto] })
-  async list(
-    @Param() params: CourseFilesParamDto,
-  ): Promise<any[]> {
+  async list(@Param() params: CourseFilesParamDto): Promise<any[]> {
     return this.svc.findByCourse(params.courseId);
   }
 }
@@ -28,18 +28,14 @@ export class FilesController {
   @Get(':fileId/download')
   @ApiOperation({ summary: '파일 다운로드 (IDOR, 내부 경로 노출)' })
   @ApiResponse({ status: 200, type: FileResponseDto })
-  async download(
-    @Param() params: FileIdParamDto,
-  ): Promise<any> {
+  async download(@Param() params: FileIdParamDto): Promise<any> {
     return this.svc.findOne(params.fileId);
   }
 
   @Post(':fileId/delete')
   @ApiOperation({ summary: '파일 삭제 (권한 검사 누락)' })
   @ApiResponse({ status: 200, type: FileResponseDto })
-  async remove(
-    @Param() params: FileIdParamDto,
-  ): Promise<any> {
+  async remove(@Param() params: FileIdParamDto): Promise<any> {
     return this.svc.delete(params.fileId);
   }
 }

@@ -7,8 +7,9 @@
 - 같은 API가 여러 취약점에 등장할 수 있다. 이 경우 API 자체가 중복이라는 뜻이 아니라, 같은 기능에서 서로 다른 취약점 시나리오를 관찰할 수 있다는 뜻이다.
 - MCP는 별도 실습용 API가 아니라 실제 서비스 기능 API를 분석하는 흐름을 기본으로 한다.
 - 수정·설정 변경과 삭제 요청은 DELETE/PATCH 대신 POST로 통일한다.
-- `/api/debug/*`, `/api/system/*` 일부는 운영 중 잘못 노출된 관리자/진단 API로 취급한다.
+- **구현 참고:** `/api/debug/*`, `/api/system/*`, `/api/admin/audit-logs*`, `/api/admin/error-logs`, `/api/security/events` 는 현재 Nest 코드에서 **HTTP로 제공하지 않는다.**(DB·문서상 시나리오는 유지) 아래 OWASP 절에 남아 있는 해당 줄은 설계·학습용 목록이다.
 - 각 API는 `role`을 함께 표기한다. 취약점 실습에서는 role 검증이 의도적으로 누락되거나 우회 가능하도록 구현할 수 있다.
+- **팀원용 1페이지 요약:** `docs/vulnerability-matrix.md` (API × 취약점 유형, 구현 여부, 페이로드 예시)
 
 Role 기준
 ---------
@@ -38,6 +39,8 @@ Role 기준
 
 1. OWASP Top 10:2025 취약점 시나리오 API
 ======================================
+
+(표기) 이 절에 나오는 `/api/debug/*`, `/api/system/*`, `/api/admin/audit-logs*`, `/api/admin/error-logs`, `/api/security/events` 등은 **현재 Nest에서 HTTP로 제공하지 않는다.** 교육용 시나리오·재구현 시 참고용이며, 실제 노출 API는 아래 `2. 서비스 정상 기능 API`와 상단 목적 절을 따른다.
 
 [A01 Broken Access Control]
 ---------------------------
@@ -96,23 +99,56 @@ GET    /api/files/:fileId/download                role: student, professor, admi
 
 [A05 Injection]
 ---------------
-POST   /api/auth/register                         role: public
-- 회원가입 중복 확인/계정 생성 로직 SQL Injection. `username` 또는 취약하게 허용된 `id` 값에 `LEFT(password_hash, 1)` 같은 조건을 주입해 에러/응답 차이 유도
+(구현됨 — raw SQL 문자열 결합. 상세·페이로드는 `docs/vulnerability-matrix.md`, `docs/api-docs.txt` 각 API 절 참고)
 
 POST   /api/auth/login                            role: public
-- 로그인 사용자 조회 SQL Injection. `username`/비밀번호 조건 조작으로 인증 우회 또는 blind SQL Injection 유도
+- 로그인 사용자 조회 SQL Injection. `username`에 `admin' --`, `admin' OR '1'='1' --` 등으로 비밀번호 조건 우회
+
+GET    /api/users/:userId                         role: student, professor, admin
+- path `userId` SQL Injection (IDOR와 동시)
+
+GET    /api/enrollments/me?userId=                role: student
+- query `userId` SQL Injection · 타 사용자 목록 노출
+
+GET    /api/enrollments/:enrollmentId             role: student
+- path `enrollmentId` SQL Injection (IDOR와 동시)
+
+POST   /api/enrollments                           role: student
+- body `userId` / `courseId` / `status` SQL Injection (INSERT)
+
+POST   /api/enrollments/:enrollmentId/cancel      role: student
+- path `enrollmentId` SQL Injection (UPDATE)
 
 GET    /api/courses?keyword=                      role: student, professor, admin
-- 강의 검색 SQL Injection
+- 강의 검색 `keyword` SQL Injection (`' OR '1'='1` 등). 단독으로는 공개 10건과 비슷해 보일 수 있음
 
 GET    /api/courses?category=                     role: student, professor, admin
-- 카테고리 필터 SQL Injection 또는 조건 우회
+- `category` SQL Injection · `is_visible=false` 조건 우회로 숨김 강의 포함 15건 반환 가능
 
-GET    /api/admin/audit-logs?path=                role: admin
-- 로그 검색 조건 조작, 경로 기반 필터 injection
+GET    /api/courses/:courseId                     role: student, professor, admin
+- path `courseId` SQL Injection
 
-POST   /api/debug/query-test                      role: admin
-- 운영 중 잘못 남은 raw query 테스트 엔드포인트
+POST   /api/courses/:courseId/visibility          role: admin (문서 role, 실제 가드 없음)
+- path `courseId` · body `isVisible` SQL Injection
+
+GET    /api/courses/:courseId/files               role: student, professor, admin
+- path `courseId` SQL Injection
+
+GET    /api/files/:fileId/download                role: student, professor, admin
+- path `fileId` SQL Injection (IDOR와 동시)
+
+POST   /api/files/:fileId/delete                  role: professor, admin
+- path `fileId` SQL Injection
+
+POST   /api/admin/users/:userId/role              role: admin (문서 role, 실제 가드 없음)
+- path `userId` · body `role` SQL Injection · 권한 상승과 동시
+
+(미구현 — 설계·학습용만, HTTP 없음)
+POST   /api/auth/register                         role: public
+- 문서상 회원가입 SQLi 시나리오는 있으나 **현재는 TypeORM** → SQLi 없음. `role=admin` body는 A07(인증/권한) 실습
+
+GET    /api/admin/audit-logs?path=                role: admin  (미구현)
+POST   /api/debug/query-test                      role: admin  (미구현)
 
 
 [A06 Insecure Design]
@@ -120,14 +156,14 @@ POST   /api/debug/query-test                      role: admin
 POST   /api/enrollments                           role: student
 - 프론트 버튼 비활성화 우회, 서버 측 정원 검증 부재, 정원 초과 신청, 중복 신청, 신청 기간 미검증
 
-POST   /api/courses/:courseId/visibility          role: admin
+POST   /api/courses/:courseId/visibility          role: admin (가드 없음 — student도 호출 가능)
 - 숨겨진 강의 공개 상태 조작
 
 
 [A07 Authentication Failures]
 -----------------------------
 POST   /api/auth/register                         role: public
-- 비밀번호 복잡도/길이 정책 없음, 계정 중복/검증 미흡
+- 비밀번호 복잡도/길이 정책 없음. body `role=admin` 등 **권한 상승 가입** (SQLi는 미구현)
 
 POST   /api/auth/login                            role: public
 - 로그인 시도 제한 없음, 계정 잠금 없음
@@ -255,33 +291,19 @@ GET   /api/admin/users                            role: admin
 POST /api/admin/users/:userId/role               role: admin
 - 사용자 권한 변경
 
-GET   /api/admin/audit-logs                       role: admin
-- 감사 로그 조회
+(아래 감사·에러 로그 HTTP API는 **현재 Nest 구현에 없음**. DB·OWASP 시나리오·`docs/api-docs.txt` [구현 제거 안내]/[Logs] 참고)
+- GET   /api/admin/audit-logs          (미구현)
+- POST  /api/admin/audit-logs/clear   (미구현)
+- GET   /api/admin/error-logs         (미구현)
 
-POST  /api/admin/audit-logs/clear                 role: admin
-- 감사 로그 삭제
+[System / Debug] (미구현)
+-------------------------
+아래 전부 **현재 Nest 구현에 없음**. 설계·학습용 시나리오는 OWASP 절 및 `api-docs.txt` 참고.
 
-GET   /api/admin/error-logs                       role: admin
-- 에러 로그 조회
-- 에러 상세에 내부 경로, stack trace, DB 에러 메시지를 포함하면 A02/A10 실습 포인트로 사용할 수 있음
-
-
-[System / Debug]
-----------------
-GET   /api/system/dependencies                    role: admin
-- dependency 목록. 관리자 시스템 정보 화면에서 사용
-
-GET   /api/system/build-info                      role: admin
-- build 정보. 관리자 시스템 정보 화면에서 사용
-
-GET   /api/debug/configs                          role: admin
-- 운영 중 잘못 노출된 debug 설정 조회
-
-POST /api/debug/configs/:key                     role: admin
-- 운영 중 잘못 노출된 debug 설정 변경
-
-GET   /api/debug/secrets                          role: admin
-- 운영 중 잘못 노출된 secret 조회
-
-POST  /api/debug/query-test                       role: admin
-- 운영 중 잘못 남은 raw query 테스트 API
+- GET   /api/system/dependencies      (미구현)
+- GET   /api/system/build-info        (미구현)
+- GET   /api/debug/configs            (미구현)
+- POST  /api/debug/configs/:key       (미구현)
+- GET   /api/debug/secrets            (미구현)
+- POST  /api/debug/query-test         (미구현)
+- GET   /api/security/events          role: admin  (미구현) — 보안 이벤트 통합 조회, 설계만 유지

@@ -6,9 +6,9 @@ import { ChangeRoleDto } from './dto/change-role.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('Users')
-@Controller('api/users')
+@Controller('users')
 export class UsersController {
-  constructor(private readonly svc: UsersService) { }
+  constructor(private readonly svc: UsersService) {}
 
   /**
    * GET /api/users/:userId
@@ -24,9 +24,9 @@ export class UsersController {
 }
 
 @ApiTags('Admin Users')
-@Controller('api/admin/users')
+@Controller('admin/users')
 export class AdminUsersController {
-  constructor(private readonly svc: UsersService) { }
+  constructor(private readonly svc: UsersService) {}
 
   /**
    * GET /api/admin/users

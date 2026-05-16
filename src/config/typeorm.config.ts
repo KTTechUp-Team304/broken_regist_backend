@@ -1,5 +1,9 @@
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import * as pg from 'pg';
+
+// BIGINT(oid 20)도 JSON 직렬화 전 number로 파싱
+pg.types.setTypeParser(20, (value: string) => parseInt(value, 10));
 
 export const createTypeOrmConfig = (
   config: ConfigService,

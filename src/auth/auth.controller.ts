@@ -36,16 +36,25 @@ import { AuthService } from './auth.service';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @ApiOperation({ summary: '회원가입' })
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  @ApiCreatedResponse({ type: UserProfileDto })
+  @ApiOperation({ summary: '회원가입 및 토큰 발급' })
+  @ApiCreatedResponse({ type: LoginResponseDto })
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Headers('user-agent') userAgent: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const registerResult = await this.authService.register(dto, userAgent);
+    response.cookie('refreshToken', registerResult.refreshToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      path: '/api/auth',
+    });
+    return registerResult;
   }
 
   @ApiOperation({ summary: '로그인 및 토큰 발급' })
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   @ApiCreatedResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({ description: '로그인 실패' })
   @Post('login')
@@ -71,7 +80,6 @@ export class AuthController {
     description: 'refreshToken=<token> 형식의 쿠키',
   })
   @ApiCreatedResponse({
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     type: RefreshResponseDto,
     description: 'access token 재발급 성공',
   })
@@ -91,7 +99,6 @@ export class AuthController {
     description: 'refreshToken=<token> 형식의 쿠키',
   })
   @ApiCreatedResponse({
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     type: LogoutResponseDto,
     description: '로그아웃 처리 및 refresh token 폐기 완료',
   })
@@ -119,7 +126,6 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '현재 로그인 사용자 조회' })
   @ApiOkResponse({
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     type: UserProfileDto,
     description: '현재 로그인 사용자 정보 반환',
   })

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole } from '../entities/user.entity';
+import { UserRole, UserStatus } from '../entities/user.entity';
 
 /**
  * 사용자 응답 스키마
@@ -24,6 +24,20 @@ export class UserResponseDto {
     description: '계정 생성 일시',
   })
   createdAt!: string;
+
+  @ApiProperty({
+    example: '2026-05-13T14:30:00Z',
+    description: '최근 로그인 일시 (미로그인 시 null)',
+    nullable: true,
+  })
+  recentLoginDate!: string | null;
+
+  @ApiProperty({
+    example: UserStatus.ACTIVE,
+    enum: Object.values(UserStatus),
+    description: '계정 상태',
+  })
+  status!: UserStatus;
 
   @ApiProperty({
     example: '$2b$10$abcdefghijklmnopqrstuvwx',

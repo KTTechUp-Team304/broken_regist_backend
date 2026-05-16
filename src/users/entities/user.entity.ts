@@ -19,6 +19,11 @@ export enum UserRole {
   ADMIN = 'admin',
 }
 
+export enum UserStatus {
+  ACTIVE = 'active',
+  SUSPENDED = 'suspended',
+}
+
 @Entity({ name: 'users' })
 export class User {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
@@ -35,6 +40,12 @@ export class User {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  @Column({ name: 'recent_login_date', type: 'timestamptz', nullable: true })
+  recentLoginDate!: Date | null;
+
+  @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
+  status!: UserStatus;
 
   @OneToOne(() => Professor, (professor) => professor.user)
   professor?: Professor;

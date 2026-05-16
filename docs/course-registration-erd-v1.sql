@@ -10,6 +10,7 @@
 -- - Server-side sessions are intentionally excluded
 
 CREATE TYPE user_role AS ENUM ('student', 'professor', 'admin');
+CREATE TYPE user_status AS ENUM ('active', 'suspended');
 CREATE TYPE course_enrollment_status AS ENUM ('enrolled', 'dropped');
 
 CREATE TABLE users (
@@ -17,13 +18,15 @@ CREATE TABLE users (
     username VARCHAR(50) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role user_role NOT NULL DEFAULT 'student',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    recent_login_date TIMESTAMPTZ,
+    status user_status NOT NULL DEFAULT 'active'
 );
 
 CREATE TABLE professors (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    display_name VARCHAR(100) NOT NULL,
+    name VARCHAR(100) NOT NULL,
     department_name VARCHAR(100)
 );
 
@@ -34,6 +37,9 @@ CREATE TABLE courses (
     description TEXT,
     professor_id BIGINT NOT NULL REFERENCES professors(id) ON DELETE RESTRICT,
     category VARCHAR(100),
+    lecture_time VARCHAR(200),
+    classroom VARCHAR(200),
+    credits INT,
     max_capacity INT NOT NULL DEFAULT 30 CHECK (max_capacity > 0),
     current_count INT NOT NULL DEFAULT 0 CHECK (current_count >= 0),
     is_visible BOOLEAN NOT NULL DEFAULT TRUE,
@@ -144,3 +150,8 @@ CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
 CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
 CREATE INDEX idx_debug_configs_sensitive ON debug_configs(is_sensitive);
 CREATE INDEX idx_cors_policies_active ON cors_policies(is_active);
+
+-- 기존 DB(v1 초기 스키마)에서 컬럼만 추가할 때:
+-- ALTER TABLE courses ADD COLUMN IF NOT EXISTS lecture_time VARCHAR(200);
+-- ALTER TABLE courses ADD COLUMN IF NOT EXISTS classroom VARCHAR(200);
+-- ALTER TABLE courses ADD COLUMN IF NOT EXISTS credits INT;

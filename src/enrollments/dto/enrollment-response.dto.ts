@@ -21,4 +21,18 @@ export class EnrollmentResponseDto {
 
   @ApiProperty({ example: '2026-09-10T08:30:00Z', required: false })
   droppedAt?: string;
+
+  @ApiProperty({
+    example: '웹 프로그래밍',
+    required: false,
+    description: '과목명 (courses.name)',
+  })
+  courseTitle?: string | null;
+
+  @ApiProperty({
+    example: '김교수',
+    required: false,
+    description: '담당 교수 표시명 (courses → professors.name)',
+  })
+  professorName?: string | null;
 }

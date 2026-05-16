@@ -1,13 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Professor } from './entities/professor.entity';
-import { ProfessorsController } from './professors.controller';
-import { ProfessorsService } from './professors.service';
 
+/** Professor 엔티티만 등록 (User·Course 관계용). HTTP API 없음. */
 @Module({
   imports: [TypeOrmModule.forFeature([Professor])],
-  controllers: [ProfessorsController],
-  providers: [ProfessorsService],
-  exports: [ProfessorsService],
+  exports: [TypeOrmModule],
 })
 export class ProfessorsModule {}

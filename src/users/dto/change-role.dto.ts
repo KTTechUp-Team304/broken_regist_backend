@@ -7,7 +7,8 @@ import { UserRole } from '../entities/user.entity';
  */
 export class ChangeRoleDto {
   @ApiProperty({
-    description: '변경할 role (검증 없이 SQL 문에 삽입되어 권한 상승 및 Injection 가능)',
+    description:
+      '변경할 role (검증 없이 SQL 문에 삽입되어 권한 상승 및 Injection 가능)',
     example: UserRole.ADMIN,
     enum: Object.values(UserRole),
   })

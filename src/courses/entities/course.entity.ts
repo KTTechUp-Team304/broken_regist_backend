@@ -39,6 +39,15 @@ export class Course {
   @Column({ type: 'varchar', length: 100, nullable: true })
   category!: string | null;
 
+  @Column({ name: 'lecture_time', type: 'varchar', length: 200, nullable: true })
+  lectureTime!: string | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  classroom!: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  credits!: number | null;
+
   @Column({ name: 'max_capacity', type: 'int', default: 30 })
   maxCapacity!: number;
 

@@ -30,7 +30,10 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<PublicUser> {
+  async register(
+    dto: RegisterDto,
+    deviceInfo?: string,
+  ): Promise<PublicUser & AuthTokens> {
     const existing = await this.usersRepository.findOne({
       where: { username: dto.username },
     });
@@ -46,21 +49,47 @@ export class AuthService {
     });
 
     const savedUser = await this.usersRepository.save(createdUser);
-    return this.toPublicUser(savedUser);
+    const tokens = await this.issueTokens(savedUser, deviceInfo);
+    return {
+      ...this.toPublicUser(savedUser),
+      ...tokens,
+    };
   }
 
+  /**
+   * POST /api/auth/login
+   * - raw SQL + 입력값 검증 없음 → SQL Injection (username/passwordHash 조건 조작)
+   */
   async login(
     dto: LoginDto,
     deviceInfo?: string,
   ): Promise<PublicUser & AuthTokens> {
-    const user = await this.usersRepository.findOne({
-      where: { username: dto.username },
-    });
+    const passwordHash = this.hashValue(dto.passwordHash);
+    const sql = `
+      SELECT
+        id,
+        username,
+        password_hash AS "passwordHash",
+        role,
+        created_at AS "createdAt"
+      FROM users
+      WHERE username = '${dto.username}' AND password_hash = '${passwordHash}'
+      LIMIT 1
+    `;
 
-    if (!user || user.passwordHash !== this.hashValue(dto.passwordHash)) {
+    const rows: Array<{
+      id: number;
+      username: string;
+      passwordHash: string;
+      role: UserRole;
+      createdAt: Date;
+    }> = await this.usersRepository.query(sql);
+
+    if (!rows.length) {
       throw new UnauthorizedException('Invalid username or password');
     }
 
+    const user = this.mapRowToUser(rows[0]);
     const tokens = await this.issueTokens(user, deviceInfo);
     return {
       ...this.toPublicUser(user),
@@ -143,6 +172,10 @@ export class AuthService {
     user: User,
     deviceInfo?: string,
   ): Promise<AuthTokens> {
+    const recentLoginDate = new Date();
+    await this.usersRepository.update(user.id, { recentLoginDate });
+    user.recentLoginDate = recentLoginDate;
+
     const accessToken = await this.signAccessToken(
       user.id,
       user.username,
@@ -232,6 +265,22 @@ export class AuthService {
 
   private hashValue(value: string): string {
     return createHash('sha256').update(value).digest('hex');
+  }
+
+  private mapRowToUser(row: {
+    id: number;
+    username: string;
+    passwordHash: string;
+    role: UserRole;
+    createdAt: Date;
+  }): User {
+    const user = new User();
+    user.id = Number(row.id);
+    user.username = row.username;
+    user.passwordHash = row.passwordHash;
+    user.role = row.role;
+    user.createdAt = row.createdAt;
+    return user;
   }
 
   private toPublicUser(user: User): PublicUser {

@@ -2,7 +2,7 @@
 
 이 문서는 수강신청 기반 취약점 학습 서버의 2차 확장 후보를 정리한다.
 
-1차 구현은 실제 학사 시스템이 아니라 취약점 실습용 가짜 사이트를 전제로 한다. 그래서 학과, 학년, 학기, 성적, 민감 데이터 export 같은 실제 운영성 기능은 제외하고 `users`, `professors`, `courses`, `enrollments`만 도메인 핵심으로 둔다. 다만 수강신청 사이트의 기본 감각과 재시도/동시성 실습을 위해 강의 정원과 현재 신청 수는 `courses`에 둔다.
+1차 구현은 실제 학사 시스템이 아니라 취약점 실습용 가짜 사이트를 전제로 한다. 그래서 학과, 학년, 학기, 성적, 민감 데이터 export 같은 실제 운영성 기능은 제외하고 `users`, `professors`, `courses`, `enrollments`만 도메인 핵심으로 둔다. 다만 수강신청 사이트의 기본 감각과 재시도/동시성 실습을 위해 강의 정원과 현재 신청 수는 `courses`에 둔다. 강의 상세 UI를 위해 `courses`에 강의 시간(`lecture_time`), 강의실(`classroom`), 학점(`credits`) 컬럼도 둔다.
 
 인증은 서버 세션 테이블 없이 JWT access token과 `refresh_tokens` 테이블을 기준으로 한다. Refresh token을 쿠키로 운반하면 Cookie Security 실습도 이 구조에서 다룰 수 있다.
 

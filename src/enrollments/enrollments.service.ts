@@ -16,18 +16,20 @@ export class EnrollmentsService {
    * - SQL Injection, 권한 검사 없음, rate limit 없음
    */
   async findMy(query: { userId?: string }): Promise<any[]> {
-    const cond = query.userId
-      ? `user_id = ${query.userId}`
-      : '1=1';
+    const cond = query.userId ? `e.user_id = ${query.userId}` : '1=1';
     const sql = `
       SELECT
-        id,
-        user_id    AS "userId",
-        course_id  AS "courseId",
-        status,
-        enrolled_at AS "enrolledAt",
-        dropped_at AS "droppedAt"
-      FROM enrollments
+        e.id,
+        e.user_id    AS "userId",
+        e.course_id  AS "courseId",
+        e.status,
+        e.enrolled_at AS "enrolledAt",
+        e.dropped_at AS "droppedAt",
+        c.name AS "courseTitle",
+        p.name AS "professorName"
+      FROM enrollments e
+      LEFT JOIN courses c ON c.id = e.course_id
+      LEFT JOIN professors p ON p.id = c.professor_id
       WHERE ${cond}
     `;
     return this.repo.query(sql);
@@ -62,8 +64,8 @@ export class EnrollmentsService {
    * - SQL Injection, 예외 처리 없음
    */
   async create(dto: {
-    userId: string;
-    courseId: string;
+    userId: number;
+    courseId: number;
     status?: string;
   }): Promise<any> {
     const statusValue = dto.status || 'enrolled';
@@ -81,6 +83,15 @@ export class EnrollmentsService {
         dropped_at AS "droppedAt"
     `;
     const rows = await this.repo.query(sql);
+
+    if (statusValue === 'enrolled') {
+      await this.repo.query(`
+        UPDATE courses
+        SET current_count = current_count + 1
+        WHERE id = ${dto.courseId}
+      `);
+    }
+
     return rows[0];
   }
 
@@ -90,6 +101,15 @@ export class EnrollmentsService {
    * - 상태 변경 및 droppedAt 갱신
    */
   async cancel(enrollmentId: string): Promise<any> {
+    await this.repo.query(`
+      UPDATE courses c
+      SET current_count = GREATEST(c.current_count - 1, 0)
+      FROM enrollments e
+      WHERE e.id = ${enrollmentId}
+        AND e.course_id = c.id
+        AND e.status = 'enrolled'
+    `);
+
     await this.repo.query(`
       UPDATE enrollments
       SET status = 'dropped', dropped_at = NOW()

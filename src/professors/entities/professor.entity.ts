@@ -21,8 +21,8 @@ export class Professor {
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ name: 'display_name', type: 'varchar', length: 100 })
-  displayName!: string;
+  @Column({ name: 'name', type: 'varchar', length: 100 })
+  name!: string;
 
   @Column({
     name: 'department_name',
