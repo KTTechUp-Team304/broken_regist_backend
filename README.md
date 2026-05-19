@@ -82,14 +82,13 @@ flowchart TB
 
 배포된 Swagger와 아래 정적 문서를 함께 사용합니다. **취약점 재현·WAF 실험의 기준**은 `api-docs.txt`와 `vulnerability-matrix.md`입니다.
 
-| 문서                                                                       | 용도                                            |
-| -------------------------------------------------------------------------- | ----------------------------------------------- |
-| [docs/api-list.txt](docs/api-list.txt)                                     | 전체 API·역할(role) 목록                        |
-| [docs/api-docs.txt](docs/api-docs.txt)                                     | 요청/응답, **공격 시나리오**, 취약 노출 포인트  |
-| [docs/api-docs-for-fe.txt](docs/api-docs-for-fe.txt)                       | 프론트 연동 요약                                |
-| [docs/vulnerability-matrix.md](docs/vulnerability-matrix.md)               | API × 취약점 매트릭스 (구현 여부·페이로드 예시) |
-| [docs/seed-mock-data.sql](docs/seed-mock-data.sql)                         | 교수·관리자·강의 시드                           |
-| [docs/course-registration-erd-v1.sql](docs/course-registration-erd-v1.sql) | PostgreSQL 스키마                               |
+| 문서                                                                           | 용도                                            |
+| ------------------------------------------------------------------------------ | ----------------------------------------------- |
+| [docs/api-list.txt](docs/api-list.txt)                                         | 전체 API·역할(role) 목록                        |
+| [docs/api-docs.txt](docs/api-docs.txt)                                         | 요청/응답, **공격 시나리오**, 취약 노출 포인트  |
+| [docs/vulnerability-matrix.md](docs/vulnerability-matrix.md)                   | API × 취약점 매트릭스 (구현 여부·페이로드 예시) |
+| [docs/seed/seed-mock-data.sql](docs/seed/seed-mock-data.sql)                   | 교수·관리자·강의 시드                           |
+| [docs/erd/course-registration-erd-v1.sql](docs/erd/course-registration-erd-v1.sql) | PostgreSQL 스키마                             |
 
 Swagger UI에서 Bearer 토큰을 넣어 보호 API를 호출할 수 있습니다.
 
@@ -115,10 +114,12 @@ broken_regist_backend/
 ├── docs/
 │   ├── api-list.txt
 │   ├── api-docs.txt
-│   ├── api-docs-for-fe.txt
 │   ├── vulnerability-matrix.md
-│   ├── seed-mock-data.sql
-│   └── course-registration-erd-v1.sql
+│   ├── erd/
+│   │   ├── course-registration-erd-expansion.md
+│   │   └── course-registration-erd-v1.sql
+│   └── seed/
+│       └── seed-mock-data.sql
 ├── src/
 │   ├── main.ts
 │   ├── app.module.ts
@@ -159,10 +160,10 @@ users (professor|admin)  →  professors (user_id FK)  →  courses (professor_i
 PostgreSQL에 접속 가능한 환경에서:
 
 ```bash
-psql -U broken_regist -d broken_regist -f docs/seed-mock-data.sql
+psql -U broken_regist -d broken_regist -f docs/seed/seed-mock-data.sql
 # 로컬 Docker 예시
 docker compose exec -T postgres psql -U broken_regist -d broken_regist \
-  < docs/seed-mock-data.sql
+  < docs/seed/seed-mock-data.sql
 ```
 
 | 테이블       | 개수 | 내용                                       |
@@ -186,7 +187,7 @@ docker compose exec -T postgres psql -U broken_regist -d broken_regist \
 | `prof.choi` | 데니스 리치   | BUS101, BUS201   | CS996     |
 | `prof.jung` | 도널드 커누스 | HUM101, CS520    | CS995     |
 
-재적용 시 `seed-mock-data.sql` 상단 **cleanup** 주석을 해제한 뒤 실행하세요 (`username` unique 충돌 방지).
+재적용 시 `docs/seed/seed-mock-data.sql` 상단 **cleanup** 주석을 해제한 뒤 실행하세요 (`username` unique 충돌 방지).
 
 ---
 
@@ -233,7 +234,7 @@ npm install
 cp .env.example .env
 docker compose up -d postgres
 docker compose exec -T postgres psql -U broken_regist -d broken_regist \
-  < docs/seed-mock-data.sql
+  < docs/seed/seed-mock-data.sql
 npm run start:dev
 ```
 

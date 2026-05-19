@@ -10,7 +10,7 @@
 --
 -- Apply:
 --   docker compose exec -T postgres psql -U broken_regist -d broken_regist \
---     < docs/seed-mock-data.sql
+--     < docs/seed/seed-mock-data.sql
 --
 -- Re-run: uncomment the cleanup block below (deletes only seed usernames/codes).
 
