@@ -53,6 +53,9 @@ GET    /api/enrollments/:enrollmentId             role: student
 POST   /api/enrollments/:enrollmentId/cancel      role: student
 - 다른 사용자의 수강신청 취소(IDOR)
 
+GET    /api/admin                                   role: admin (문서 role, 실제 가드 없음)
+- 일반 사용자의 관리자 대시보드 통계 조회
+
 GET    /api/admin/users                           role: admin
 - 일반 사용자의 관리자 사용자 목록 접근
 
@@ -285,6 +288,9 @@ POST   /api/files/:fileId/delete                  role: professor, admin
 
 [Admin]
 -------
+GET   /api/admin                              role: admin (가드 없음)
+- 관리자 대시보드 통계 (하드코딩)
+
 GET   /api/admin/users                            role: admin
 - 사용자 목록
 

@@ -648,6 +648,38 @@ POST /api/files/:fileId/delete
 
 ---------------
 [API]
+GET /api/admin
+
+[기능]
+- 관리자 대시보드 통계 조회 (전체 사용자·강의·수강신청·활성 사용자, 차트용 시계열·분포 데이터)
+
+[요청데이터]
+- 헤더
+  - (문서) `Authorization: Bearer <accessToken>` — **서버는 검증하지 않음**
+- 바디
+  - 없음
+- 공격이 들어오는 방법
+  - student/professor token으로 호출
+  - Authorization 헤더 없이 호출
+
+[응답데이터]
+- 정상 응답 (하드코딩 JSON)
+  - `stats`: `totalUsers`, `openedCourses`, `totalEnrollments`, `activeUsers` — 각 `{ value, change }`
+  - `enrollmentTrend`: `{ month, count }[]`
+  - `courseDistribution`: `{ name, value }[]`
+  - `weeklyActiveUsers`: `{ day, users }[]`
+- 취약점 노출 응답
+  - 일반 사용자·무토큰 호출자도 관리자 대시보드 통계 전체 수신
+
+[연결 UI]
+- 관리자 대시보드 (`/admin`)
+
+[노출 취약점]
+- A01: 관리자 API 접근 우회 (BFLA — 문서 role: admin, 가드 없음)
+
+
+---------------
+[API]
 GET /api/admin/users
 
 [기능]

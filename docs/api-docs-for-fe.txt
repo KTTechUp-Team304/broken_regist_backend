@@ -23,7 +23,7 @@
 서버 JWT 가드 (구현 기준, `api-docs.txt`와 동일)
 ----------------------------------------------
 - **`JwtAuthGuard` 적용:** `POST /api/auth/logout`, `GET /api/auth/me` 만.
-- **가드 없음 (토큰 없이도 HTTP 200 가능):** `courses`, `enrollments`, `users`, `files`, `admin/users` 전부.
+- **가드 없음 (토큰 없이도 HTTP 200 가능):** `courses`, `enrollments`, `users`, `files`, `admin`(대시보드), `admin/users` 전부.
 - 프론트는 승인 후 Bearer를 붙이지만, Burp·curl 실습 시 토큰 생략 가능. `api-docs.txt`에만 Bearer 필수로 적힌 API가 많음 — **문서와 구현 차이** 주의.
 
 라우팅 규칙
@@ -195,8 +195,23 @@ GET /api/users/:userId
       - status: `active` | `suspended`
 
 ================================================================================
-7. Admin — 사용자 관리 (`AdminUsersController`, 실제 경로 `/api/admin/users`)
+7. Admin — 대시보드·사용자 관리 (`AdminController`, `AdminUsersController`)
 ================================================================================
+
+GET /api/admin
+  Description: 관리자 대시보드 통계(하드코딩). 문서상 role: admin — **서버는 Bearer·role 검증 없음**.
+  Response (JSON): AdminDashboard
+    AdminDashboard: {
+      stats: {
+        totalUsers: { value: number, change: string },
+        openedCourses: { value: number, change: string },
+        totalEnrollments: { value: number, change: string },
+        activeUsers: { value: number, change: string }
+      },
+      enrollmentTrend: { month: string, count: number }[],
+      courseDistribution: { name: string, value: number }[],
+      weeklyActiveUsers: { day: string, users: number }[]
+    }
 
 GET /api/admin/users
   Description: 전체 사용자 목록.

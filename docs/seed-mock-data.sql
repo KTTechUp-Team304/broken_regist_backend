@@ -1,8 +1,10 @@
--- Mock seed: users (6) → professors (5) → courses (15)
+-- Mock seed: users (16) → professors (5) → courses (15)
+--   users id 1–10: student / id 11–15: professor / id 16: admin
 -- professors.user_id FK → users.id 이므로 users를 반드시 먼저 INSERT 한다.
 -- Run after schema exists (TypeORM synchronize or course-registration-erd-v1.sql).
 --
 -- Login passwords (plain → SHA-256 hex, same as AuthService.hashValue):
+--   All student accounts:   student1
 --   All professor accounts: professor1
 --   Admin (optional):       admin123
 --
@@ -22,10 +24,12 @@
 -- );
 -- DELETE FROM professors WHERE user_id IN (
 --   SELECT id FROM users WHERE username IN (
+--     '김민수','이서연','박지훈','최유진','정하은','강도윤','윤서아','임준호','송나연','오태양',
 --     '리누스 토발즈','앨런 튜링','그레이스 호퍼','데니스 리치','도널드 커누스','admin'
 --   )
 -- );
 -- DELETE FROM users WHERE username IN (
+--   '김민수','이서연','박지훈','최유진','정하은','강도윤','윤서아','임준호','송나연','오태양',
 --   '리누스 토발즈','앨런 튜링','그레이스 호퍼','데니스 리치','도널드 커누스','admin'
 -- );
 -- END cleanup
@@ -33,16 +37,32 @@
 BEGIN;
 
 -- Password hashes
+-- student1:   509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9
 -- professor1: ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488
--- admin123:     240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
+-- admin123:   240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
 
-INSERT INTO users (username, password_hash, role) VALUES
-  ('리누스 토발즈', 'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
-  ('앨런 튜링',     'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
-  ('그레이스 호퍼', 'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
-  ('데니스 리치',   'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
-  ('도널드 커누스', 'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
-  ('admin',         '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin');
+INSERT INTO users (id, username, password_hash, role) OVERRIDING SYSTEM VALUE VALUES
+  (1,  '김민수', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (2,  '이서연', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (3,  '박지훈', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (4,  '최유진', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (5,  '정하은', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (6,  '강도윤', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (7,  '윤서아', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (8,  '임준호', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (9,  '송나연', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (10, '오태양', '509e87a6c45ee0a3c657bf946dd6dc43d7e5502143be195280f279002e70f7d9', 'student'),
+  (11, '리누스 토발즈', 'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
+  (12, '앨런 튜링',     'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
+  (13, '그레이스 호퍼', 'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
+  (14, '데니스 리치',   'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
+  (15, '도널드 커누스', 'ffa0d142c7d7ec220030a9818364e1ff624d1c8586e3050d2f943a6fe6b5b488', 'professor'),
+  (16, 'admin',         '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin');
+
+SELECT setval(
+  pg_get_serial_sequence('users', 'id'),
+  (SELECT MAX(id) FROM users)
+);
 
 INSERT INTO professors (user_id, name, department_name)
 SELECT u.id, u.username, v.department_name

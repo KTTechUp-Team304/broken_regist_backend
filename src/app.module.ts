@@ -11,6 +11,7 @@ import { FilesModule } from './files/files.module';
 import { LogsModule } from './logs/logs.module';
 import { ProfessorsModule } from './professors/professors.module';
 import { UsersModule } from './users/users.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     EnrollmentsModule,
     FilesModule,
     LogsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

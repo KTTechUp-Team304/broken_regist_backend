@@ -166,6 +166,7 @@
 - 로그 삭제
 
 연결 API:
+- GET   /api/admin
 - GET   /api/admin/users
 - POST /api/admin/users/:userId/role
 - GET   /api/admin/audit-logs
