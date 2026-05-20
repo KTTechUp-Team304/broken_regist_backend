@@ -9,8 +9,8 @@
 | ------------- | -------------------------------------------- |
 | 스택          | NestJS 11, TypeORM, PostgreSQL, Swagger      |
 | 패키지 매니저 | **npm**                                      |
-| API 베이스    | `https://<도메인>/api` _(배포 후 기입)_      |
-| API 문서      | `https://<도메인>/api-docs` _(배포 후 기입)_ |
+| API 베이스    | `https://broken-regist-alb-1430893989.ap-northeast-2.elb.amazonaws.com`      |
+| API 문서      | `https://broken-regist-alb-1430893989.ap-northeast-2.elb.amazonaws.com/api-docs`|
 
 UI는 [broken_regist_frontend](https://github.com/KTTechUp-Team304/broken_regist_frontend) README를 참고하세요.
 
